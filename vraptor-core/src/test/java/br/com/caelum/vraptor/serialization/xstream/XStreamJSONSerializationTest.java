@@ -43,17 +43,17 @@ public class XStreamJSONSerializationTest {
 	private HttpServletResponse response;
 	private DefaultTypeNameExtractor extractor;
 	private HibernateProxyInitializer initializer;
+    private XStreamBuilder builder = XStreamBuilderImpl.cleanInstance();
 
-	@Before
+    @Before
     public void setup() throws Exception {
         this.stream = new ByteArrayOutputStream();
 
         response = mock(HttpServletResponse.class);
         when(response.getWriter()).thenReturn(new PrintWriter(stream));
-
         extractor = new DefaultTypeNameExtractor();
 		initializer = new HibernateProxyInitializer();
-		this.serialization = new XStreamJSONSerialization(response, extractor, initializer);
+		this.serialization = new XStreamJSONSerialization(response, extractor, initializer, builder);
     }
 
 	public static class Address {
@@ -226,12 +226,32 @@ public class XStreamJSONSerializationTest {
 		assertThat(result(), is(equalTo(expectedResult)));
 	}
 
+	static class WithAdvanced {
+		AdvancedOrder order;
+	}
+	
 	@Test
 	public void shouldSerializeParentFields() {
 //		String expectedResult = "<advancedOrder><notes>complex package</notes><price>15.0</price><comments>pack it nicely, please</comments></advancedOrder>";
 		Order order = new AdvancedOrder(null, 15.0, "pack it nicely, please", "complex package");
 		serialization.from(order).serialize();
 		assertThat(result(), containsString("\"notes\": \"complex package\""));
+	}
+	
+	@Test
+	public void shouldExcludeNonPrimitiveParentFields() {
+//		String expectedResult = "<advancedOrder><notes>complex package</notes><price>15.0</price><comments>pack it nicely, please</comments></advancedOrder>";
+		WithAdvanced advanced = new WithAdvanced();
+		advanced.order = new AdvancedOrder(new Client("john"), 15.0, "pack it nicely, please", "complex package");
+		serialization.from(advanced).include("order").serialize();
+		assertThat(result(), not(containsString("\"client\"")));
+	}
+	
+	@Test
+	public void shouldExcludeParentFields() {
+		Order order = new AdvancedOrder(null, 15.0, "pack it nicely, please", "complex package");
+		serialization.from(order).exclude("comments").serialize();
+		assertThat(result(), not(containsString("\"comments\"")));
 	}
 
 	@Test
@@ -378,7 +398,7 @@ public class XStreamJSONSerializationTest {
 	@Test
 	public void shouldUseCollectionConverterWhenItExists() {
 		String expectedResult = "[\"testing\"]";
-		XStreamJSONSerialization serialization = new XStreamJSONSerialization(response, extractor, initializer) {
+		XStreamJSONSerialization serialization = new XStreamJSONSerialization(response, extractor, initializer, builder) {
 			@Override
 			protected XStream getXStream() {
 				XStream xStream = super.getXStream();

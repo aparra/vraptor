@@ -29,6 +29,9 @@ import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import br.com.caelum.iogi.Instantiator;
+import br.com.caelum.iogi.spi.DependencyProvider;
+import br.com.caelum.iogi.spi.ParameterNamesProvider;
 import br.com.caelum.vraptor.Convert;
 import br.com.caelum.vraptor.Converter;
 import br.com.caelum.vraptor.Intercepts;
@@ -78,7 +81,13 @@ import br.com.caelum.vraptor.http.ParameterNameProvider;
 import br.com.caelum.vraptor.http.ParametersProvider;
 import br.com.caelum.vraptor.http.ParanamerNameProvider;
 import br.com.caelum.vraptor.http.UrlToResourceTranslator;
+import br.com.caelum.vraptor.http.iogi.InstantiatorWithErrors;
+import br.com.caelum.vraptor.http.iogi.IogiParametersProvider;
+import br.com.caelum.vraptor.http.iogi.VRaptorDependencyProvider;
+import br.com.caelum.vraptor.http.iogi.VRaptorInstantiator;
+import br.com.caelum.vraptor.http.iogi.VRaptorParameterNamesProvider;
 import br.com.caelum.vraptor.http.ognl.EmptyElementsRemoval;
+import br.com.caelum.vraptor.http.ognl.OgnlFacade;
 import br.com.caelum.vraptor.http.ognl.OgnlParametersProvider;
 import br.com.caelum.vraptor.http.route.DefaultRouter;
 import br.com.caelum.vraptor.http.route.DefaultTypeFinder;
@@ -119,8 +128,12 @@ import br.com.caelum.vraptor.ioc.ConverterHandler;
 import br.com.caelum.vraptor.ioc.InterceptorStereotypeHandler;
 import br.com.caelum.vraptor.ioc.ResourceHandler;
 import br.com.caelum.vraptor.ioc.StereotypeHandler;
-import br.com.caelum.vraptor.proxy.ObjenesisProxifier;
+import br.com.caelum.vraptor.proxy.CglibProxifier;
+import br.com.caelum.vraptor.proxy.InstanceCreator;
+import br.com.caelum.vraptor.proxy.JavassistProxifier;
+import br.com.caelum.vraptor.proxy.ObjenesisInstanceCreator;
 import br.com.caelum.vraptor.proxy.Proxifier;
+import br.com.caelum.vraptor.proxy.ReflectionInstanceCreator;
 import br.com.caelum.vraptor.resource.DefaultMethodNotAllowedHandler;
 import br.com.caelum.vraptor.resource.DefaultResourceNotFoundHandler;
 import br.com.caelum.vraptor.resource.MethodNotAllowedHandler;
@@ -138,15 +151,20 @@ import br.com.caelum.vraptor.serialization.NullProxyInitializer;
 import br.com.caelum.vraptor.serialization.ProxyInitializer;
 import br.com.caelum.vraptor.serialization.RepresentationResult;
 import br.com.caelum.vraptor.serialization.XMLSerialization;
+import br.com.caelum.vraptor.serialization.xstream.XStreamBuilder;
+import br.com.caelum.vraptor.serialization.xstream.XStreamBuilderImpl;
+import br.com.caelum.vraptor.serialization.xstream.XStreamConverters;
 import br.com.caelum.vraptor.serialization.xstream.XStreamJSONPSerialization;
 import br.com.caelum.vraptor.serialization.xstream.XStreamJSONSerialization;
 import br.com.caelum.vraptor.serialization.xstream.XStreamXMLSerialization;
 import br.com.caelum.vraptor.validator.BeanValidator;
 import br.com.caelum.vraptor.validator.DefaultValidator;
-import br.com.caelum.vraptor.validator.HibernateValidator3;
-import br.com.caelum.vraptor.validator.JSR303Validator;
-import br.com.caelum.vraptor.validator.JSR303ValidatorFactory;
+import br.com.caelum.vraptor.validator.DefaultBeanValidator;
+import br.com.caelum.vraptor.validator.MethodValidatorCreator;
+import br.com.caelum.vraptor.validator.ValidatorCreator;
+import br.com.caelum.vraptor.validator.MessageConverter;
 import br.com.caelum.vraptor.validator.MessageInterpolatorFactory;
+import br.com.caelum.vraptor.validator.MethodValidatorInterceptor;
 import br.com.caelum.vraptor.validator.NullBeanValidator;
 import br.com.caelum.vraptor.validator.Outjector;
 import br.com.caelum.vraptor.validator.ReplicatorOutjector;
@@ -170,6 +188,8 @@ import br.com.caelum.vraptor.view.RefererResult;
 import br.com.caelum.vraptor.view.SessionFlashScope;
 import br.com.caelum.vraptor.view.Status;
 import br.com.caelum.vraptor.view.ValidationViewsFactory;
+
+import com.thoughtworks.xstream.converters.SingleValueConverter;
 
 /**
  * List of base components to vraptor.<br/>
@@ -196,14 +216,16 @@ public class BaseComponents {
             MethodNotAllowedHandler.class,	DefaultMethodNotAllowedHandler.class,
             RoutesConfiguration.class, 		NoRoutesConfiguration.class,
             Deserializers.class,			DefaultDeserializers.class,
-            Proxifier.class, 				ObjenesisProxifier.class,
+            Proxifier.class, 				getProxifier(),
+            InstanceCreator.class,          getInstanceCreator(),
             ParameterNameProvider.class, 	ParanamerNameProvider.class,
             TypeFinder.class, 				DefaultTypeFinder.class,
-            XMLDeserializer.class,			XStreamXMLDeserializer.class,
             RoutesParser.class, 			PathAnnotationRoutesParser.class,
             Routes.class,					DefaultRoutes.class,
             RestDefaults.class,				DefaultRestDefaults.class,
             Evaluator.class,				JavaEvaluator.class,
+            StaticContentHandler.class,		DefaultStaticContentHandler.class,
+            SingleValueConverter.class,     XStreamConverters.NullConverter.class,
             ProxyInitializer.class,			getProxyInitializerImpl()
     );
 
@@ -212,7 +234,8 @@ public class BaseComponents {
 
     private static final Map<Class<?>, Class<?>> PROTOTYPE_COMPONENTS = classMap(
     		InterceptorStack.class, 						DefaultInterceptorStack.class,
-    		RequestExecution.class, 						EnhancedRequestExecution.class
+    		RequestExecution.class, 						EnhancedRequestExecution.class,
+    		XStreamBuilder.class, 							XStreamBuilderImpl.class
     );
 
     private static final Map<Class<?>, Class<?>> REQUEST_COMPONENTS = classMap(
@@ -237,12 +260,11 @@ public class BaseComponents {
             DeserializingInterceptor.class, 				DeserializingInterceptor.class,
             JsonDeserializer.class,							JsonDeserializer.class,
             Localization.class, 							JstlLocalization.class,
-            EmptyElementsRemoval.class,                     EmptyElementsRemoval.class,
-            ParametersProvider.class, 						OgnlParametersProvider.class,
             OutjectResult.class, 							OutjectResult.class,
             ParametersInstantiatorInterceptor.class, 		ParametersInstantiatorInterceptor.class,
             ResourceLookupInterceptor.class, 				ResourceLookupInterceptor.class,
             Status.class,									DefaultStatus.class,
+            XMLDeserializer.class,			                XStreamXMLDeserializer.class,
             XMLSerialization.class,							XStreamXMLSerialization.class,
             JSONSerialization.class,						XStreamJSONSerialization.class,
             JSONPSerialization.class,						XStreamJSONPSerialization.class,
@@ -251,7 +273,9 @@ public class BaseComponents {
             FormatResolver.class,							DefaultFormatResolver.class,
             Configuration.class,							ApplicationConfiguration.class,
             RestHeadersHandler.class,						DefaultRestHeadersHandler.class,
-            FlashScope.class,								SessionFlashScope.class
+            FlashScope.class,								SessionFlashScope.class,
+            XStreamConverters.class,                        XStreamConverters.class,
+            MessageConverter.class,							MessageConverter.class
     );
 
     @SuppressWarnings({"unchecked", "rawtypes"})
@@ -314,21 +338,49 @@ public class BaseComponents {
 		}
 	}
 
+    private static Class<? extends InstanceCreator> getInstanceCreator() {
+        if (isClassPresent("org.objenesis.ObjenesisStd")) {
+            return ObjenesisInstanceCreator.class;
+        }
+
+        return ReflectionInstanceCreator.class;
+    }
+
+    private static Class<? extends Proxifier> getProxifier() {
+        if (isClassPresent("net.sf.cglib.proxy.Factory")) {
+            return CglibProxifier.class;
+        }
+
+        return JavassistProxifier.class;
+    }
+
 	public static Map<Class<?>, Class<?>> getCachedComponents() {
 		return Collections.unmodifiableMap(CACHED_COMPONENTS);
 	}
 
     public static Map<Class<?>, Class<?>> getApplicationScoped() {
-    	registerIfClassPresent(APPLICATION_COMPONENTS, "javax.validation.Validation",
-    			JSR303ValidatorFactory.class, ValidatorFactoryCreator.class,MessageInterpolatorFactory.class);
+        if (!isClassPresent("ognl.OgnlRuntime")) {
+            APPLICATION_COMPONENTS.put(DependencyProvider.class, VRaptorDependencyProvider.class);
+        }
+    	
+        registerIfClassPresent(APPLICATION_COMPONENTS, "javax.validation.Validation",
+                ValidatorCreator.class, ValidatorFactoryCreator.class, MessageInterpolatorFactory.class);
+        
+        registerIfClassPresent(APPLICATION_COMPONENTS, "org.hibernate.validator.method.MethodValidator",
+                MethodValidatorCreator.class);
+        
     	return Collections.unmodifiableMap(APPLICATION_COMPONENTS);
     }
 
     public static Map<Class<?>, Class<?>> getRequestScoped() {
-    	if(!registerIfClassPresent(REQUEST_COMPONENTS, "javax.validation.Validation",			JSR303Validator.class) &&
-    	   !registerIfClassPresent(REQUEST_COMPONENTS, "org.hibernate.validator.ClassValidator",HibernateValidator3.class)) {
-    		REQUEST_COMPONENTS.put(BeanValidator.class, NullBeanValidator.class);
+    	if(isClassPresent("javax.validation.Validation")) {
+    		REQUEST_COMPONENTS.put(BeanValidator.class, DefaultBeanValidator.class);
+    	} else {
+            REQUEST_COMPONENTS.put(BeanValidator.class, NullBeanValidator.class);
     	}
+
+        registerIfClassPresent(REQUEST_COMPONENTS, "org.hibernate.validator.method.MethodValidator",
+                MethodValidatorInterceptor.class);
 
         if (isClassPresent("org.apache.commons.fileupload.FileItem")) {
             REQUEST_COMPONENTS.put(MultipartInterceptor.class, CommonsUploadMultipartInterceptor.class);
@@ -341,6 +393,17 @@ public class BaseComponents {
     	    		"your classpath or use a Servlet 3 Container");
             REQUEST_COMPONENTS.put(MultipartInterceptor.class, NullMultipartInterceptor.class);
     	}
+        
+        if (isClassPresent("ognl.OgnlRuntime")) {
+            REQUEST_COMPONENTS.put(ParametersProvider.class, OgnlParametersProvider.class);
+            REQUEST_COMPONENTS.put(EmptyElementsRemoval.class, EmptyElementsRemoval.class);
+            REQUEST_COMPONENTS.put(OgnlFacade.class, OgnlFacade.class);
+        } else {
+            REQUEST_COMPONENTS.put(ParametersProvider.class, IogiParametersProvider.class);
+            REQUEST_COMPONENTS.put(ParameterNamesProvider.class, VRaptorParameterNamesProvider.class);
+            REQUEST_COMPONENTS.put(InstantiatorWithErrors.class, VRaptorInstantiator.class);
+            REQUEST_COMPONENTS.put(Instantiator.class, VRaptorInstantiator.class);
+        }
 
         return Collections.unmodifiableMap(REQUEST_COMPONENTS);
     }

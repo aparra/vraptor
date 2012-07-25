@@ -15,38 +15,22 @@
  */
 package br.com.caelum.vraptor.serialization.xstream;
 
+import static br.com.caelum.vraptor.serialization.xstream.VRaptorClassMapper.isPrimitive;
 import static com.google.common.base.Preconditions.checkNotNull;
 
 import java.io.Writer;
-import java.lang.reflect.Field;
-import java.lang.reflect.ParameterizedType;
-import java.lang.reflect.Type;
-import java.lang.reflect.TypeVariable;
 import java.util.ArrayList;
-import java.util.Calendar;
 import java.util.Collection;
-import java.util.Collections;
-import java.util.Date;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
-import java.util.Map.Entry;
 
-import net.vidageek.mirror.dsl.Mirror;
 import br.com.caelum.vraptor.interceptor.TypeNameExtractor;
 import br.com.caelum.vraptor.serialization.ProxyInitializer;
 import br.com.caelum.vraptor.serialization.Serializer;
 import br.com.caelum.vraptor.serialization.SerializerBuilder;
 
-import com.google.common.collect.LinkedListMultimap;
-import com.google.common.collect.Multimap;
 import com.thoughtworks.xstream.XStream;
-import com.thoughtworks.xstream.converters.Converter;
-import com.thoughtworks.xstream.converters.MarshallingContext;
-import com.thoughtworks.xstream.converters.UnmarshallingContext;
-import com.thoughtworks.xstream.io.HierarchicalStreamReader;
-import com.thoughtworks.xstream.io.HierarchicalStreamWriter;
 
 /**
  * A SerializerBuilder based on XStream
@@ -57,12 +41,9 @@ public class XStreamSerializer implements SerializerBuilder {
 
 	private final XStream xstream;
 	private final Writer writer;
-	private Object root;
-	private Class<?> rootClass;
-	private final Multimap<Class<?>, String> excludes = LinkedListMultimap.create();
-	private Set<Class<?>> elementTypes;
 	private final TypeNameExtractor extractor;
 	private final ProxyInitializer initializer;
+	private final Serializee serializee = new Serializee();
 
 	public XStreamSerializer(XStream xstream, Writer writer, TypeNameExtractor extractor, ProxyInitializer initializer) {
 		this.xstream = xstream;
@@ -71,61 +52,20 @@ public class XStreamSerializer implements SerializerBuilder {
 		this.initializer = initializer;
 	}
 
-	private boolean isPrimitive(Class<?> type) {
-		return type.isPrimitive()
-			|| type.isEnum()
-			|| Number.class.isAssignableFrom(type)
-			|| type.equals(String.class)
-			|| Date.class.isAssignableFrom(type)
-			|| Calendar.class.isAssignableFrom(type)
-			|| Boolean.class.equals(type)
-			|| Character.class.equals(type);
-	}
-
 	public Serializer exclude(String... names) {
-		for (String name : names) {
-			Set<Class<?>> parentTypes = getParentTypesFor(name);
-			for (Class<?> type : parentTypes) {
-				xstream.omitField(type, getNameFor(name));
-			}
-		}
+		serializee.excludeAll(names);
 		return this;
 	}
 
-	private String getNameFor(String name) {
-		String[] path = name.split("\\.");
-		return path[path.length-1];
-	}
-
-	private Set<Class<?>> getParentTypesFor(String name) {
-		if (elementTypes == null) {
-			Class<?> type = rootClass;
-			return Collections.<Class<?>>singleton(getParentType(name, type));
-		} else {
-			Set<Class<?>> result = new HashSet<Class<?>>();
-			for (Class<?> type : elementTypes) {
-				result.add(getParentType(name, type));
-			}
-			return result;
-		}
-	}
-
-	private Class<?> getParentType(String name, Class<?> type) {
-		String[] path = name.split("\\.");
-		for (int i = 0; i < path.length - 1; i++) {
-			type = getActualType(new Mirror().on(type).reflect().field(path[i]).getGenericType());
-		}
-		return type;
-	}
 
 	private void preConfigure(Object obj,String alias) {
 		checkNotNull(obj, "You can't serialize null objects");
 
 		xstream.processAnnotations(obj.getClass());
 
-		rootClass = initializer.getActualClass(obj);
+		serializee.setRootClass(initializer.getActualClass(obj));
 		if (alias == null && initializer.isProxy(obj.getClass())) {
-			alias = extractor.nameFor(rootClass);
+			alias = extractor.nameFor(serializee.getRootClass());
 		}
 
 		setRoot(obj);
@@ -135,11 +75,9 @@ public class XStreamSerializer implements SerializerBuilder {
 
 	private void setRoot(Object obj) {
 		if (Collection.class.isInstance(obj)) {
-			this.root = normalizeList(obj);
+			this.serializee.setRoot(normalizeList(obj));
 		} else {
-			Class<?> type = rootClass;
-			excludeNonPrimitiveFields(type);
-			this.root = obj;
+			this.serializee.setRoot(obj);
 		}
 	}
 
@@ -150,15 +88,12 @@ public class XStreamSerializer implements SerializerBuilder {
 		} else {
 			list = (Collection<Object>) obj;
 		}
-		elementTypes = findElementTypes(list);
-		for (Class<?> type : elementTypes) {
-			excludeNonPrimitiveFields(type);
-		}
+		serializee.setElementTypes(findElementTypes(list));
 		return list;
 	}
 
 	private boolean hasDefaultConverter() {
-		return xstream.getConverterLookup().lookupConverterForType(rootClass).equals(xstream.getConverterLookup().lookupConverterForType(Object.class));
+		return xstream.getConverterLookup().lookupConverterForType(serializee.getRootClass()).equals(xstream.getConverterLookup().lookupConverterForType(Object.class));
 	}
 
 	private void setAlias(Object obj, String alias) {
@@ -190,93 +125,30 @@ public class XStreamSerializer implements SerializerBuilder {
 		return set;
 	}
 
-	private void excludeNonPrimitiveFields(Class<?> type) {
-		for (Field field : new Mirror().on(type).reflectAll().fields()) {
-			if (!isPrimitive(field.getType())) {
-				excludes.put(type, field.getName());
-			}
-		}
-	}
-
 	public Serializer include(String... fields) {
-		for (String field : fields) {
-			try {
-				Set<Class<?>> parentTypes = getParentTypesFor(field);
-				String fieldName = getNameFor(field);
-				for (Class<?> parentType : parentTypes) {
-					Type genericType = new Mirror().on(parentType).reflect().field(fieldName).getGenericType();
-					Class<?> fieldType = getActualType(genericType);
-
-					if (!excludes.containsKey(fieldType)) {
-						excludeNonPrimitiveFields(fieldType);
-					}
-					excludes.remove(parentType, fieldName);
-				}
-			} catch (NullPointerException e) {
-				throw new IllegalArgumentException("Field path " + field + " doesn't exist");
-			}
-		}
+		serializee.includeAll(fields);
 		return this;
 	}
 
-	private Class<?> getActualType(Type genericType) {
-		if (genericType instanceof ParameterizedType) {
-			ParameterizedType type = (ParameterizedType) genericType;
-
-			if (isCollection(type)) {
-				Type actualType = type.getActualTypeArguments()[0];
-
-				if (actualType instanceof TypeVariable<?>) {
-					return (Class<?>) type.getRawType();
-				}
-
-				return (Class<?>) actualType;
-			}
-		}
-
-		return (Class<?>) genericType;
-	}
-
-	private boolean isCollection(Type type) {
-		if (type instanceof ParameterizedType) {
-			ParameterizedType ptype = (ParameterizedType) type;
-			return Collection.class.isAssignableFrom((Class<?>) ptype.getRawType())
-			  || Map.class.isAssignableFrom((Class<?>) ptype.getRawType());
-		}
-		return Collection.class.isAssignableFrom((Class<?>) type);
-	}
-
 	public void serialize() {
-		for (Entry<Class<?>, String> exclude : excludes.entries()) {
-			xstream.omitField(exclude.getKey(), exclude.getValue());
+		if (xstream instanceof VRaptorXStream) {
+			VRaptorClassMapper mapper = ((VRaptorXStream) xstream).getVRaptorMapper();
+			mapper.setSerializee(serializee);
+		} else {
+			new OldAndProbablyBuggyConfigurer(xstream).configure(serializee);
 		}
+		
 		registerProxyInitializer();
-		xstream.toXML(root, writer);
+		xstream.toXML(serializee.getRoot(), writer);
 	}
 
 	public Serializer recursive() {
-		excludes.clear();
+		this.serializee.setRecursive(true);
 		return this;
 	}
 
 	private void registerProxyInitializer() {
-		xstream.registerConverter(new Converter() {
-
-			public boolean canConvert(Class clazz) {
-				return initializer.isProxy(clazz);
-			}
-
-			public Object unmarshal(HierarchicalStreamReader reader,
-					UnmarshallingContext context) {
-				throw new AssertionError();
-			}
-
-			public void marshal(Object value, HierarchicalStreamWriter writer,
-					MarshallingContext context) {
-				Converter converter = xstream.getConverterLookup().lookupConverterForType(initializer.getActualClass(value));
-				initializer.initialize(value);
-				converter.marshal(value, writer, context);
-			}
-		});
+		xstream.registerConverter(new ProxyConverter(initializer, xstream));
 	}
+	
 }

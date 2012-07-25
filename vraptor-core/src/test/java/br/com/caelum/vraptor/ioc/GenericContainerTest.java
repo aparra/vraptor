@@ -27,18 +27,24 @@ import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.notNullValue;
 import static org.hamcrest.Matchers.sameInstance;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
 
+import java.net.URL;
+import java.net.URLClassLoader;
 import java.util.Collection;
 import java.util.Collections;
 
 import javax.annotation.PostConstruct;
 import javax.annotation.PreDestroy;
 import javax.servlet.ServletContext;
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpSession;
 
 import org.hamcrest.Matcher;
 import org.hamcrest.MatcherAssert;
+import org.jmock.Expectations;
 import org.jmock.Mockery;
 import org.joda.time.LocalDate;
 import org.joda.time.LocalTime;
@@ -48,6 +54,8 @@ import org.junit.Test;
 
 import br.com.caelum.vraptor.ComponentRegistry;
 import br.com.caelum.vraptor.Converter;
+import br.com.caelum.vraptor.Result;
+import br.com.caelum.vraptor.config.BasicConfiguration;
 import br.com.caelum.vraptor.converter.jodatime.LocalDateConverter;
 import br.com.caelum.vraptor.converter.jodatime.LocalTimeConverter;
 import br.com.caelum.vraptor.core.BaseComponents;
@@ -63,10 +71,13 @@ import br.com.caelum.vraptor.ioc.fixture.ComponentFactoryInTheClasspath.Provided
 import br.com.caelum.vraptor.ioc.fixture.ConverterInTheClasspath;
 import br.com.caelum.vraptor.ioc.fixture.CustomComponentInTheClasspath;
 import br.com.caelum.vraptor.ioc.fixture.CustomComponentWithLifecycleInTheClasspath;
+import br.com.caelum.vraptor.ioc.fixture.DependentOnSomethingFromComponentFactory;
 import br.com.caelum.vraptor.ioc.fixture.InterceptorInTheClasspath;
 import br.com.caelum.vraptor.ioc.fixture.ResourceInTheClasspath;
-import br.com.caelum.vraptor.ioc.guice.GuiceProviderTest;
 import br.com.caelum.vraptor.resource.ResourceMethod;
+import br.com.caelum.vraptor.scan.ScannotationComponentScannerTest;
+
+import com.google.common.base.Objects;
 
 /**
  * Acceptance test that checks if the container is capable of giving all
@@ -154,12 +165,48 @@ public abstract class GenericContainerTest {
 		provider = getProvider();
 		provider.start(context); // In order to tearDown ok
 	}
+	
+	@Test
+	public void setsAnAttributeOnRequestWithTheObjectTypeName() throws Exception {
+		executeInsideRequest(new WhatToDo<Void>() {
+			public Void execute(final RequestInfo request, int counter) {
+				return provider.provideForRequest(request, new Execution<Void>() {
+
+					public Void insideRequest(Container container) {
+						Result result = container.instanceFor(Result.class);
+						HttpServletRequest request = container.instanceFor(HttpServletRequest.class);
+						assertSame(result, Objects.firstNonNull(request.getAttribute("result"), request.getAttribute("defaultResult")));
+						return null;
+					}
+				});
+			}
+		});
+	}
+	
+	@Test
+	public void setsAnAttributeOnSessionWithTheObjectTypeName() throws Exception {
+		registerAndGetFromContainer(MySessionComponent.class, MySessionComponent.class);
+		executeInsideRequest(new WhatToDo<Void>() {
+			public Void execute(final RequestInfo request, int counter) {
+				return provider.provideForRequest(request, new Execution<Void>() {
+					
+					public Void insideRequest(Container container) {
+						HttpSession session = container.instanceFor(HttpSession.class);
+						MySessionComponent component = container.instanceFor(MySessionComponent.class);
+						assertNotNull(component);
+						assertSame(component, session.getAttribute("mySessionComponent"));
+						return null;
+					}
+				});
+			}
+		});
+	}
 
 	@Component
 	public static class MyRequestComponent {
 
 	}
-
+	
 	@Test
 	public void processesCorrectlyRequestBasedComponents() {
 		checkAvailabilityFor(false, MyRequestComponent.class, MyRequestComponent.class);
@@ -192,15 +239,6 @@ public abstract class GenericContainerTest {
 		mockery.assertIsSatisfied();
 	}
 
-	@Component
-	public static class DependentOnSomethingFromComponentFactory {
-		private final NeedsCustomInstantiation dependency;
-
-		public DependentOnSomethingFromComponentFactory(NeedsCustomInstantiation dependency) {
-			this.dependency = dependency;
-		}
-	}
-
 	@Test
 	public void supportsComponentFactoriesForCustomInstantiation() {
 		// TODO the registered component is only available in the next request
@@ -219,13 +257,34 @@ public abstract class GenericContainerTest {
 		DependentOnSomethingFromComponentFactory dependent = registerAndGetFromContainer(
 				DependentOnSomethingFromComponentFactory.class, null);
 		assertThat(dependent, is(notNullValue()));
-		assertThat(dependent.dependency, is(notNullValue()));
+		assertThat(dependent.getDependency(), is(notNullValue()));
 	}
 
 	@Before
 	public void setup() throws Exception {
 		this.mockery = new Mockery();
 		this.context = mockery.mock(ServletContext.class, "servlet context");
+
+		mockery.checking(new Expectations() {{
+			allowing(context).getMajorVersion();
+			will(returnValue(3));
+
+			allowing(context).getInitParameter(BasicConfiguration.BASE_PACKAGES_PARAMETER_NAME);
+			will(returnValue("br.com.caelum.vraptor.ioc.fixture"));
+
+            allowing(context).getRealPath("/WEB-INF/classes");
+            will(returnValue(getClassDir()));
+
+            allowing(context).getClassLoader();
+            will(returnValue(new URLClassLoader(new URL[] {ScannotationComponentScannerTest.class.getResource("/test-fixture.jar")}, Thread.currentThread().getContextClassLoader())));
+
+            allowing(context).getInitParameter(BasicConfiguration.ENCODING);
+            allowing(context).getInitParameter(BasicConfiguration.SCANNING_PARAM);
+            will(returnValue("enabled"));
+
+            allowing(context).setAttribute(with(any(String.class)), with(any(Object.class)));
+
+        }});
 		configureExpectations();
 		provider = getProvider();
 		provider.start(context);
@@ -421,9 +480,7 @@ public abstract class GenericContainerTest {
 	}
 
 	protected String getClassDir() {
-		String classFile = GuiceProviderTest.class.getResource("/br/com/caelum/vraptor/ioc/GenericContainerTest.class").getFile();
-		String dir = classFile.replaceFirst("/GenericContainerTest.class$", "");
-		return dir;
+		return getClass().getResource("/br/com/caelum/vraptor/test").getFile();
 	}
 
 }

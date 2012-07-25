@@ -36,7 +36,6 @@ import org.junit.Test;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 
-import br.com.caelum.vraptor.Converter;
 import br.com.caelum.vraptor.converter.IntegerConverter;
 import br.com.caelum.vraptor.converter.LocaleBasedCalendarConverter;
 import br.com.caelum.vraptor.converter.LongConverter;
@@ -45,6 +44,8 @@ import br.com.caelum.vraptor.core.Converters;
 import br.com.caelum.vraptor.core.JstlLocalization;
 import br.com.caelum.vraptor.core.RequestInfo;
 import br.com.caelum.vraptor.http.MutableRequest;
+import br.com.caelum.vraptor.proxy.CglibProxifier;
+import br.com.caelum.vraptor.proxy.ReflectionInstanceCreator;
 
 /**
  * Unfortunately OGNL sucks so bad in its design that we had to create a "unit"
@@ -62,6 +63,7 @@ public class MiscOgnlSupportTest {
     private House house;
     private ResourceBundle bundle;
 	private @Mock Converters converters;
+	private @Mock EmptyElementsRemoval removal;
 
 	@Before
     public void setup() throws Exception {
@@ -70,12 +72,15 @@ public class MiscOgnlSupportTest {
         this.house = new House();
         this.context = (OgnlContext) Ognl.createDefaultContext(house);
         context.setTraceEvaluations(true);
+        context.put("nullHandler", new GenericNullHandler(removal));
         // OgnlRuntime.setPropertyAccessor(Set.class, new SetAccessor());
         // OgnlRuntime.setPropertyAccessor(Map.class, new MapAccessor());
         this.bundle = ResourceBundle.getBundle("messages");
         Ognl.setTypeConverter(context, new VRaptorConvertersAdapter(converters, bundle));
-        when(converters.to(String.class)).thenReturn((Converter) new StringConverter());
-		when(converters.to(Long.class)).thenReturn((Converter) new LongConverter());
+        when(converters.to(String.class)).thenReturn(new StringConverter());
+		when(converters.to(Long.class)).thenReturn(new LongConverter());
+		
+		context.put("proxifier", new CglibProxifier(new ReflectionInstanceCreator()));
     }
 
 
@@ -127,7 +132,7 @@ public class MiscOgnlSupportTest {
 
     @Test
     public void isCapableOfDealingWithEmptyParameterForInternalWrapperValue() throws OgnlException {
-        when(converters.to(Integer.class)).thenReturn((Converter) new IntegerConverter());
+        when(converters.to(Integer.class)).thenReturn(new IntegerConverter());
         Ognl.setValue("cat.firstLeg.id", context, house, "");
         assertThat(house.cat.firstLeg.id, is(equalTo(null)));
     }
@@ -139,7 +144,7 @@ public class MiscOgnlSupportTest {
         final JstlLocalization jstlLocalization = new JstlLocalization(webRequest);
 
         when(request.getAttribute("javax.servlet.jsp.jstl.fmt.locale.request")).thenReturn("pt_br");
-        when(converters.to(Calendar.class)).thenReturn((Converter) new LocaleBasedCalendarConverter(jstlLocalization));
+        when(converters.to(Calendar.class)).thenReturn(new LocaleBasedCalendarConverter(jstlLocalization));
         Ognl.setValue("cat.firstLeg.birthDay", context, house, "10/5/2010");
         assertThat(house.cat.firstLeg.birthDay, is(equalTo((Calendar) new GregorianCalendar(2010, 4, 10))));
     }

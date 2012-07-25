@@ -18,7 +18,9 @@
 package br.com.caelum.vraptor.http.iogi;
 
 import java.lang.reflect.Method;
+import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
+import java.lang.reflect.TypeVariable;
 import java.util.ArrayList;
 import java.util.Enumeration;
 import java.util.List;
@@ -29,7 +31,6 @@ import javax.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import br.com.caelum.iogi.Instantiator;
 import br.com.caelum.iogi.parameters.Parameter;
 import br.com.caelum.iogi.parameters.Parameters;
 import br.com.caelum.iogi.reflection.Target;
@@ -46,9 +47,9 @@ public class IogiParametersProvider implements ParametersProvider {
 	private static final Logger LOGGER = LoggerFactory.getLogger(IogiParametersProvider.class);
 	private final ParameterNameProvider nameProvider;
 	private final HttpServletRequest servletRequest;
-	private final Instantiator instantiator;
+	private final InstantiatorWithErrors instantiator;
 
-	public IogiParametersProvider(ParameterNameProvider provider, HttpServletRequest parameters, Instantiator instantiator) {
+	public IogiParametersProvider(ParameterNameProvider provider, HttpServletRequest parameters, InstantiatorWithErrors instantiator) {
 		this.nameProvider = provider;
 		this.servletRequest = parameters;
 		this.instantiator = instantiator;
@@ -56,10 +57,8 @@ public class IogiParametersProvider implements ParametersProvider {
 	}
 
 	public Object[] getParametersFor(ResourceMethod method, List<Message> errors, ResourceBundle bundle) {
-		Method javaMethod = method.getMethod();
-
 		Parameters parameters = parseParameters(servletRequest);
-		List<Target<Object>> targets = createTargets(javaMethod);
+		List<Target<Object>> targets = createTargets(method);
 
 		List<Object> arguments = instantiateParameters(parameters, targets, errors);
 
@@ -78,15 +77,20 @@ public class IogiParametersProvider implements ParametersProvider {
 	}
 
 	private Object instantiateOrAddError(Parameters parameters, List<Message> errors, Target<Object> target) {
-		return instantiator.instantiate(target, parameters);
+		return instantiator.instantiate(target, parameters, errors);
 	}
 
-	private List<Target<Object>> createTargets(Method javaMethod) {
+	private List<Target<Object>> createTargets(ResourceMethod method) {
+		Method javaMethod = method.getMethod();
 		List<Target<Object>> targets = new ArrayList<Target<Object>>();
 
 		Type[] parameterTypes = javaMethod.getGenericParameterTypes();
 		String[] parameterNames = nameProvider.parameterNamesFor(javaMethod);
 		for (int i = 0; i < methodArity(javaMethod); i++) {
+			if (parameterTypes[i] instanceof TypeVariable) {
+				ParameterizedType superclass = (ParameterizedType) method.getResource().getType().getGenericSuperclass();
+				parameterTypes[i] = superclass.getActualTypeArguments()[0];
+			}
 			Target<Object> newTarget = new Target<Object>(parameterTypes[i], parameterNames[i]);
 			targets.add(newTarget);
 		}

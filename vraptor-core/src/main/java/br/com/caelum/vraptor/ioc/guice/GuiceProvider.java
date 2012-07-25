@@ -38,6 +38,7 @@ import com.google.inject.Key;
 import com.google.inject.Module;
 import com.google.inject.Stage;
 import com.google.inject.TypeLiteral;
+import com.google.inject.multibindings.Multibinder;
 import com.google.inject.util.Modules;
 
 /**
@@ -51,7 +52,7 @@ import com.google.inject.util.Modules;
  */
 public class GuiceProvider implements ContainerProvider {
 
-
+	private boolean stopSession = false;
 	static final RequestCustomScope REQUEST = new RequestCustomScope();
 	static final SessionCustomScope SESSION = new SessionCustomScope();
 	static final ApplicationCustomScope APPLICATION = new ApplicationCustomScope();
@@ -84,6 +85,10 @@ public class GuiceProvider implements ContainerProvider {
 			VRaptorRequestHolder.resetRequestForCurrentThread();
 		}
 	}
+	
+	public Container getContainer() {
+		return container;
+	}
 
 	public void start(ServletContext context) {
 		this.context = context;
@@ -110,7 +115,7 @@ public class GuiceProvider implements ContainerProvider {
 	protected Module customModule() {
 		return new Module() {
 			public void configure(Binder binder) {
-				ComponentRegistry registry = new GuiceComponentRegistry(binder);
+				ComponentRegistry registry = new GuiceComponentRegistry(binder, Multibinder.newSetBinder(binder, StereotypeHandler.class));
 				BasicConfiguration config = new BasicConfiguration(context);
 
 			    // using the new vraptor.scan
@@ -131,8 +136,15 @@ public class GuiceProvider implements ContainerProvider {
 		 * eliminate this hook.
 		 */
 	}
+	
+	protected void stopSession(Boolean value) {
+		this.stopSession = value;
+	}
 
 	public void stop() {
+		if(stopSession) {
+			SESSION.stopAll();
+		}
 		APPLICATION.stop();
 	}
 

@@ -25,10 +25,7 @@ import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.notNullValue;
 
-import java.util.Collections;
-import java.util.Enumeration;
 import java.util.List;
-import java.util.MissingResourceException;
 import java.util.ResourceBundle;
 
 import org.junit.Before;
@@ -126,6 +123,28 @@ public class ValidationsTest {
         assertThat(validations.getErrors(), hasSize(0));
     }
 
+    @Test
+    public void should18nalizeParametersUsingConstructorBundle() {
+    	Validations validations = new Validations(singletonBundle("some.message", "The value")) {{
+            that(false, "category", "some.param.message", i18n("some.message"));
+        }};
+
+    	List<Message> errors = validations.getErrors(singletonBundle("some.param.message", "The param {0} sucks"));
+
+    	assertThat(errors.get(0).getMessage(), is("The param The value sucks"));
+    }
+
+    @Test
+    public void should18nalizeParametersUsingGivenBundle() {
+    	Validations validations = new Validations(singletonBundle("some.param.message", "The param {0} sucks")) {{
+            that(false, "category", "some.param.message", i18n("some.message"));
+        }};
+
+    	List<Message> errors = validations.getErrors(singletonBundle("some.message", "The value"));
+
+    	assertThat(errors.get(0).getMessage(), is("The param The value sucks"));
+    }
+
     @SuppressWarnings("null")
 	@Test
     public void canIgnoreInternalPrimitiveValidationIfAlreadyNull() {
@@ -172,6 +191,7 @@ public class ValidationsTest {
         assertThat(validations.getErrors(), hasSize(1));
         assertThat(validations.getErrors().get(0).getMessage(), is(equalTo("Age should be a value between 0 and 100")));
     }
+
     @Test
     public void formatsParameterizedValidationMessagesWithI18nedStringParameters() {
     	final Client client = new Client();
@@ -181,21 +201,41 @@ public class ValidationsTest {
     	assertThat(validations.getErrors().get(0).getMessage(), is(equalTo("Age should be a value between 0 and 100")));
     }
 
+    @Test
+    public void should18nalizeTheCategoryParameterUsingGivenBundle() {
+    	Validations validations = new Validations() {{
+    		that(false, i18n("some.category"), "some.message");
+    	}};
+
+    	List<Message> errors = validations.getErrors(singletonBundle("some.category", "The Category"));
+
+    	assertThat(errors.get(0).getCategory(), is("The Category"));
+    }
+
+    @Test
+    public void should18nalizeTheCategoryParameterUsingMatchersWithReasonGivenBundle() {
+    	Validations validations = new Validations() {{
+    		that(null, is(notNullValue()), i18n("some.category"), "some.reason");
+    	}};
+
+    	List<Message> errors = validations.getErrors(singletonBundle("some.category", "The Category"));
+
+    	assertThat(errors.get(0).getCategory(), is("The Category"));
+    }
+
+    @Test
+    public void should18nalizeTheCategoryParameterUsingMatchersWithoutReasonGivenBundle() {
+    	Validations validations = new Validations() {{
+    		that(null, is(notNullValue()), i18n("some.category"));
+    	}};
+
+    	List<Message> errors = validations.getErrors(singletonBundle("some.category", "The Category"));
+
+    	assertThat(errors.get(0).getCategory(), is("The Category"));
+    }
+
     private ResourceBundle singletonBundle(final String key, final String value) {
-		ResourceBundle bundle = new ResourceBundle() {
-			@Override
-			protected Object handleGetObject(String k) {
-				if (k.equals(key)) {
-					return value;
-				}
-				throw new MissingResourceException(k, value, key);
-			}
-			@Override
-			public Enumeration<String> getKeys() {
-				return Collections.enumeration(Collections.singleton(key));
-			}
-    	};
-		return bundle;
+		return new SingletonResourceBundle(key, value);
 	}
 
 }

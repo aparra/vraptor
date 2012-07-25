@@ -24,11 +24,11 @@ import java.lang.reflect.Type;
 import java.util.List;
 import java.util.Map;
 
-import net.sf.cglib.proxy.Factory;
 import net.vidageek.mirror.dsl.Mirror;
 import ognl.ObjectNullHandler;
 import ognl.OgnlContext;
-import br.com.caelum.vraptor.vraptor2.Info;
+import br.com.caelum.vraptor.proxy.Proxifier;
+import br.com.caelum.vraptor.util.StringUtils;
 
 /**
  * This null handler is a decorator for ognl api to invoke vraptor's api in
@@ -38,8 +38,11 @@ import br.com.caelum.vraptor.vraptor2.Info;
  * @author Guilherme Silveira
  */
 public class ReflectionBasedNullHandler extends ObjectNullHandler {
+    
+    private final Proxifier proxifier;
 
-    public ReflectionBasedNullHandler() {
+    public ReflectionBasedNullHandler(Proxifier proxifier) {
+        this.proxifier = proxifier;
 	}
 
 	@Override
@@ -49,7 +52,7 @@ public class ReflectionBasedNullHandler extends ObjectNullHandler {
 
         EmptyElementsRemoval removal = (EmptyElementsRemoval) ctx.get("removal");
 
-        GenericNullHandler generic = new GenericNullHandler(removal);
+        NullHandler nullHandler = (NullHandler) ctx.get("nullHandler");
         ListNullHandler list = new ListNullHandler(removal);
 
         if (target == ctx.getRoot() && target instanceof List) {
@@ -64,10 +67,10 @@ public class ReflectionBasedNullHandler extends ObjectNullHandler {
         }
 
         if (target instanceof List) {
-            return list.instantiate(target, property, list.getListType(target, ctx.getCurrentEvaluation().getPrevious()));
+            return list.instantiate(target, property, list.getListType(target, ctx.getCurrentEvaluation().getPrevious(), ctx));
         }
 
-        String propertyCapitalized = Info.capitalize((String) property);
+        String propertyCapitalized = StringUtils.capitalize((String) property);
         Method getter = findGetter(target, propertyCapitalized);
         Type returnType = getter.getGenericReturnType();
         if (returnType instanceof ParameterizedType) {
@@ -80,25 +83,19 @@ public class ReflectionBasedNullHandler extends ObjectNullHandler {
         if (baseType.isArray()) {
             instance = instantiateArray(baseType);
         } else {
-            instance = generic.instantiate(baseType);
+            instance = nullHandler.instantiate(baseType);
         }
+        
         Method setter = findMethod(target.getClass(), "set" + propertyCapitalized, target.getClass(), getter.getReturnType());
         new Mirror().on(target).invoke().method(setter).withArgs(instance);
         return instance;
     }
 
-	public static Method findGetter(Object target, String propertyCapitalized) {
-		Class<? extends Object> targetClass = target.getClass();
-		if (target instanceof Factory)
-			targetClass = targetClass.getSuperclass(); 
-		return new Mirror().on(targetClass).reflect().method("get" + propertyCapitalized).withoutArgs();
-	}
-
     private Object instantiateArray(Class<?> baseType) {
         return Array.newInstance(baseType.getComponentType(), 0);
     }
 
-    static <P> Method findMethod(Class<?> type, String name, Class<?> baseType, Class<P> parameterType) {
+    <P> Method findMethod(Class<?> type, String name, Class<?> baseType, Class<P> parameterType) {
         Method[] methods = type.getDeclaredMethods();
         for (Method method : methods) {
             if (method.getName().equals(name)) {
@@ -113,11 +110,24 @@ public class ReflectionBasedNullHandler extends ObjectNullHandler {
         }
         return findMethod(type.getSuperclass(), name, type, parameterType);
     }
-    
-	public static Method findSetter(Object target, String propertyCapitalized, Class<? extends Object> argument) {
+
+    Method findGetter(Object target, String propertyCapitalized) {
+        Class<? extends Object> targetClass = target.getClass();
+        
+        if (proxifier.isProxy(target)) {
+            targetClass = targetClass.getSuperclass();
+        }
+        
+        return new Mirror().on(targetClass).reflect().method("get" + propertyCapitalized).withoutArgs();
+    }
+
+	Method findSetter(Object target, String propertyCapitalized, Class<? extends Object> argument) {
 		Class<? extends Object> targetClass = target.getClass();
-		if (target instanceof Factory)
-			targetClass = targetClass.getSuperclass(); 
+		
+        if (proxifier.isProxy(target)) {
+            targetClass = targetClass.getSuperclass();
+        }
+		
 		return new Mirror().on(targetClass).reflect().method("set" + propertyCapitalized).withArgs(argument);
 	}
 

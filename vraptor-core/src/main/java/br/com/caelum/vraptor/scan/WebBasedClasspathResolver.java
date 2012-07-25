@@ -38,6 +38,13 @@ public class WebBasedClasspathResolver implements ClasspathResolver {
 		this.servletContext = servletContext;
 	}
 
+	public ClassLoader getClassLoader() {
+		if (servletContext.getMajorVersion() == 3) {
+			return servletContext.getClassLoader();
+		}
+		return Thread.currentThread().getContextClassLoader();
+	}
+
 	public URL findWebInfClassesLocation() {
 		try {
 			String webInfClassesDir = servletContext.getRealPath("/WEB-INF/classes");

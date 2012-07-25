@@ -21,9 +21,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import java.util.ResourceBundle;
 
 import br.com.caelum.vraptor.Result;
 import br.com.caelum.vraptor.View;
@@ -33,6 +31,8 @@ import br.com.caelum.vraptor.proxy.Proxifier;
 import br.com.caelum.vraptor.util.test.MockResult;
 import br.com.caelum.vraptor.view.ValidationViewsFactory;
 
+import com.google.common.base.Supplier;
+
 /**
  * The default validator implementation.
  *
@@ -41,13 +41,17 @@ import br.com.caelum.vraptor.view.ValidationViewsFactory;
 @RequestScoped
 public class DefaultValidator extends AbstractValidator {
 
-    private static final Logger logger = LoggerFactory.getLogger(DefaultValidator.class);
+    private final class LocalizationSupplier implements Supplier<ResourceBundle> {
+		public ResourceBundle get() {
+			return localization.getBundle();
+		}
+	}
 
     private final Result result;
 
 	private final List<Message> errors = new ArrayList<Message>();
 	private final ValidationViewsFactory viewsFactory;
-	private final List<BeanValidator> beanValidators; //registered bean-validators
+	private final BeanValidator beanValidator;
 
 	private final Outjector outjector;
 
@@ -55,27 +59,21 @@ public class DefaultValidator extends AbstractValidator {
 
 	private final Localization localization;
 
-    public DefaultValidator(Result result, ValidationViewsFactory factory, Outjector outjector, Proxifier proxifier, List<BeanValidator> beanValidators, Localization localization) {
+    public DefaultValidator(Result result, ValidationViewsFactory factory, Outjector outjector, Proxifier proxifier, BeanValidator beanValidator, Localization localization) {
         this.result = result;
 		this.viewsFactory = factory;
 		this.outjector = outjector;
 		this.proxifier = proxifier;
-		this.beanValidators = beanValidators;
+		this.beanValidator = beanValidator;
 		this.localization = localization;
     }
 
     public void checking(Validations validations) {
-        addAll(validations.getErrors(localization.getBundle()));
+        addAll(validations.getErrors(new LocalizationSupplier()));
     }
 
     public void validate(Object object) {
-        if (beanValidators == null || beanValidators.isEmpty()) {
-            logger.warn("has no validators registered");
-        } else {
-            for (BeanValidator validator : beanValidators) {
-                addAll(validator.validate(object));
-            }
-        }
+        addAll(beanValidator.validate(object));
     }
 
     public <T extends View> T onErrorUse(Class<T> view) {
@@ -95,7 +93,7 @@ public class DefaultValidator extends AbstractValidator {
 
     public void add(Message message) {
     	if (message instanceof I18nMessage && !((I18nMessage) message).hasBundle()) {
-    		((I18nMessage) message).setBundle(localization.getBundle());
+    		((I18nMessage) message).setLazyBundle(new LocalizationSupplier());
     	}
     	this.errors.add(message);
     }

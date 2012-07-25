@@ -24,8 +24,10 @@ import java.util.List;
 
 import net.vidageek.mirror.dsl.Mirror;
 import ognl.Evaluation;
+import ognl.OgnlContext;
 import br.com.caelum.vraptor.VRaptorException;
-import br.com.caelum.vraptor.vraptor2.Info;
+import br.com.caelum.vraptor.proxy.Proxifier;
+import br.com.caelum.vraptor.util.StringUtils;
 
 /**
  * Capable of instantiating lists. These are registered for later removal of
@@ -33,7 +35,7 @@ import br.com.caelum.vraptor.vraptor2.Info;
  *
  * @author Guilherme Silveira
  */
-class ListNullHandler {
+public class ListNullHandler {
 
 	private final EmptyElementsRemoval removal;
 
@@ -61,11 +63,15 @@ class ListNullHandler {
 		return instance;
 	}
 
-	Type getListType(Object target, Evaluation evaluation) {
+	Type getListType(Object target, Evaluation evaluation, OgnlContext ctx) {
 		// creating instance
 		Object listHolder = evaluation.getSource();
 		String listPropertyName = evaluation.getNode().toString();
-		Method listSetter = ReflectionBasedNullHandler.findSetter(listHolder, Info.capitalize(listPropertyName), target.getClass());
+		
+		Proxifier proxifier = (Proxifier) ctx.get("proxifier");
+		Method listSetter = new ReflectionBasedNullHandler(proxifier).findSetter(listHolder, StringUtils.capitalize(listPropertyName), 
+		        target.getClass());
+		
 		Type[] types = listSetter.getGenericParameterTypes();
 		Type type = types[0];
 		if (!(type instanceof ParameterizedType)) {

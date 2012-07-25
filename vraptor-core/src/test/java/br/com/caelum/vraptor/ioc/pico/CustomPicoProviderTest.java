@@ -31,7 +31,6 @@ import org.jmock.Expectations;
 import org.junit.Test;
 
 import br.com.caelum.vraptor.ComponentRegistry;
-import br.com.caelum.vraptor.config.BasicConfiguration;
 import br.com.caelum.vraptor.core.RequestInfo;
 import br.com.caelum.vraptor.http.MutableRequest;
 import br.com.caelum.vraptor.http.MutableResponse;
@@ -41,6 +40,7 @@ import br.com.caelum.vraptor.ioc.ContainerProvider;
 import br.com.caelum.vraptor.ioc.GenericContainerTest;
 import br.com.caelum.vraptor.ioc.RequestScoped;
 import br.com.caelum.vraptor.ioc.WhatToDo;
+import br.com.caelum.vraptor.test.HttpServletRequestMock;
 import br.com.caelum.vraptor.test.HttpSessionMock;
 
 public class CustomPicoProviderTest extends GenericContainerTest {
@@ -140,7 +140,7 @@ public class CustomPicoProviderTest extends GenericContainerTest {
             }
         });
         MutableResponse response = mockery.mock(MutableResponse.class, "response" + counter);
-        RequestInfo webRequest = new RequestInfo(context, null, request, response);
+        RequestInfo webRequest = new RequestInfo(context, null, new HttpServletRequestMock(session, request, mockery), response);
         return execution.execute(webRequest, counter);
     }
 
@@ -153,15 +153,6 @@ public class CustomPicoProviderTest extends GenericContainerTest {
                     will(returnValue("non-existing-vraptor.xml"));
                     allowing(context).getRealPath("/WEB-INF/classes/views.properties");
                     will(returnValue("views.properties"));
-
-                    allowing(context).getInitParameter(BasicConfiguration.BASE_PACKAGES_PARAMETER_NAME);
-					will(returnValue("br.com.caelum.vraptor.ioc.fixture"));
-
-	                allowing(context).getInitParameter(BasicConfiguration.ENCODING);
-	                allowing(context).getInitParameter(BasicConfiguration.SCANNING_PARAM);
-
-	                allowing(context).getRealPath("/WEB-INF/classes");
-	                will(returnValue(getClassDir()));
                 }
             });
         } catch (Exception e) {

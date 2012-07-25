@@ -1,3 +1,18 @@
+/***
+ * Copyright (c) 2009 Caelum - www.caelum.com.br/opensource All rights reserved.
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not
+ * use this file except in compliance with the License. You may obtain a copy of
+ * the License at
+ * 
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+ * License for the specific language governing permissions and limitations under
+ * the License.
+ */
 package br.com.caelum.vraptor.ioc.guice;
 
 import static com.google.inject.matcher.Matchers.annotatedWith;
@@ -77,7 +92,7 @@ public class VRaptorAbstractModule extends AbstractModule {
 
 		bind(Container.class).toInstance(container);
 
-		GuiceComponentRegistry registry = new GuiceComponentRegistry(binder());
+		GuiceComponentRegistry registry = new GuiceComponentRegistry(binder(), Multibinder.newSetBinder(binder(), StereotypeHandler.class));
 
 		bind(ComponentRegistry.class).toInstance(registry);
 
@@ -88,10 +103,10 @@ public class VRaptorAbstractModule extends AbstractModule {
 		for (Class converter : BaseComponents.getBundledConverters()) {
 			registry.register(converter, converter);
 		}
+
+
 		for (Class handler : BaseComponents.getStereotypeHandlers()) {
 			registry.register(handler, handler);
-			Multibinder<StereotypeHandler> stereotypeHandlers = Multibinder.newSetBinder(binder(), StereotypeHandler.class);
-			stereotypeHandlers.addBinding().to(handler);
 		}
 
 		for (Entry<Class<?>, Class<?>> entry : BaseComponents.getCachedComponents().entrySet()) {

@@ -53,27 +53,38 @@ O pacote raiz por padrão é %%app%%, para mudar isso crie a aplicação com o s
 vraptor new onlinestore --package=br.com.caelum
 [/code] 
 
-[section Maven]
-
-Por padrão a aplicação é criada com o ant com ferramenta de build e o ivy como gerenciador de dependências,
-é posível utilizar o maven 2, basta criar o aplicação com 
+Você também pode configurar os pacotes de modelos, controllers e repositórios:
 
 [code]
+vraptor new onlinestore --package=br.com.caelum -m modelo -c controlador -r repositorio
+[/code] 
+
+[section Build: Maven, Gradle ou Ivy]
+
+O vraptor-scaffold gera um projeto com ant e ivy por padrão, mas você pode
+escolher outra ferramenta de build com um simples comando na hora de criar
+seu projeto:
+
+[code]
+# for maven
 vraptor new onlinestore --build-tool=mvn
-[/code]
 
-Execute [code]mvn jetty:run[/code] para iniciar a aplicação 
-
-[section Gradle]
-
-Gradle é uma ferramente de build que usa conceitos DRY para deixar o arquivo de build menor e de mais fácil manutenção, 
-e agora o VRaptor Scaffold vem com suporte ao gradle. Para utilizar é bem simples execute o comando
-
-[code]
+# for gradle
 vraptor new onlinestore --build-tool=gradle
 [/code]
 
-Execute [code]gradle jettyRun[/code] para iniciar a aplicação
+Ao usar gradle, utilize [code]gradle jettyRun[/code] para rodar a aplicação.
+
+[section ORM: JPA ou Hibernate, connection pool]
+
+Um projeto novo já vem por padrão com o c3p0 configurado.
+Além disso você pode escolher entre JPA (EntityManager, padrão), ou 
+Hibernate (Session), ao criar seu projeto:
+
+[code]
+vraptor new onlinestore -o=jpa
+vraptor new onlinestore -o=hibernate
+[/code]
 
 [section Freemarker]
 
@@ -90,9 +101,17 @@ Se você optou pelo maven execute
 mvn eclipse:eclipse
 [/code]
 
-Para gerar os arquivos de configuração do eclipse, após isso é so importar o projeto normalmente.
-Se você optou pelo ant os arquivos de configuração serão gerados no momento em que criar 
-o projeto, é possível pular a criação desses arquivos com o comando
+Para gerar os arquivos de configuração do eclipse, após isso apenas faça a importação do projeto normalmente.
+
+Se você optou pelo ant os arquivos de configuração serão gerados no momento em que criar o projeto, não se esqueça de executar
+
+[code]
+ant compile
+[/code]
+
+para baixar todas as dependências antes de importar o projeto.
+
+É possível pular a criação desses arquivos com o comando
 
 [code]
 vraptor new onlinestore --skip-eclipse
@@ -101,18 +120,55 @@ vraptor new onlinestore --skip-eclipse
 [section Tipos de atributos suportado]
 É possível gerar um CRUD com os seguintes atributos: %%boolean, double, float, short, integer, long, string e text%%.
 
+[section Plugins]
+
+Plugins do vraptor são facilmente instalados através do comando
+
+[code]
+vraptor plugin simple-email -v 1.0.0
+[/code]
+
+Você pode encontrar uma lista de plugins disponíveis em https://github.com/caelum/vraptor-contrib
+
+[section jQuery]
+A versão do jQuery é sempre a última disponível para download, para utilizar uma versão anterior use o comando:
+
+[code]
+vraptor new onlinestore -j 1.4.4
+[/code]
+
+[section Heroku]
+Agora é possível fazer um deploy de qualquer aplicação java no Heroku com um simples: 
+
+[code]
+git push heroku master
+[/code]
+
+E o vrpator-scaffold já tem um comando que gera toda a
+aplicação do jeito que o Heroku espera. Para isso basta utilizar o comando:
+ 
+[code]
+vraptor new onlinestore --heroku
+[/code]
+
+Depois é só fazer o deploy da sua aplicação seguindo os passos do Heroku.
+Para mais informações acesse http://www.heroku.com/java
+
 [section Comando Help]
-O VRaptor Scaffold está dividindo basicamente em 2 geradores o "new" que é responsável por
-criar a estrutura da aplicação e o "scaffold" que é resposável por gerar os CRUDs.
-É possível ver todas as opções de customização dos geradores.
 
-[code]vraptor new -h[/code]
+Para visualizar a lista de comandos disponibilizados pelo vraptor-scaffold, execute:
 
-[code]vraptor scaffold -h[/code]
+[code]
+vraptor -h
+[/code]
+
+vraptor new -h
+vraptor scaffold -h
+vraptor plugin -h
 
 [section Contribuindo]
 
 O projeto está sendo desenvolvido em ruby e o código fonte está hospedado no github 
-no seguinte endereço http://github.com/caelum/vraptor-scaffold .
+no seguinte endereço https://github.com/caelum/vraptor-scaffold .
 Você pode colaborar com o projeto fazendo o fork e enviando seu path ou uma nova funcionalide.
 Não se esqueça dos testes.
