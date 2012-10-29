@@ -18,9 +18,13 @@
 package br.com.caelum.vraptor.interceptor;
 
 import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.not;
+import static org.junit.Assert.assertThat;
 import static org.junit.Assert.fail;
+import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.argThat;
 import static org.mockito.Matchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyZeroInteractions;
@@ -28,14 +32,14 @@ import static org.mockito.Mockito.when;
 
 import java.io.ByteArrayInputStream;
 import java.io.File;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintWriter;
+import java.lang.reflect.Method;
 import java.util.Arrays;
 
 import javax.servlet.ServletOutputStream;
 import javax.servlet.http.HttpServletResponse;
-
-import junit.framework.Assert;
 
 import org.hamcrest.Description;
 import org.hamcrest.Matcher;
@@ -45,11 +49,13 @@ import org.junit.Test;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 
+import br.com.caelum.vraptor.InterceptionException;
 import br.com.caelum.vraptor.Result;
 import br.com.caelum.vraptor.core.InterceptorStack;
 import br.com.caelum.vraptor.core.MethodInfo;
 import br.com.caelum.vraptor.interceptor.download.Download;
 import br.com.caelum.vraptor.interceptor.download.DownloadInterceptor;
+import br.com.caelum.vraptor.resource.DefaultResourceMethod;
 import br.com.caelum.vraptor.resource.ResourceMethod;
 
 public class DownloadInterceptorTest {
@@ -73,25 +79,6 @@ public class DownloadInterceptorTest {
     }
 
 	@Test
-	public void testIfAcceptsFile() throws Exception {
-		when(resourceMethod.getMethod()).thenReturn(FakeResource.class.getMethod("file"));
-
-		Assert.assertTrue("Nao aceitou java.io.File", interceptor.accepts(resourceMethod));
-	}
-	@Test
-	public void testIfAcceptsInputStream() throws Exception {
-		when(resourceMethod.getMethod()).thenReturn(FakeResource.class.getMethod("input"));
-
-		Assert.assertTrue("Nao aceitou java.io.InputStream", interceptor.accepts(resourceMethod));
-	}
-	@Test
-	public void testIfAcceptsDownload() throws Exception {
-		when(resourceMethod.getMethod()).thenReturn(FakeResource.class.getMethod("download"));
-
-		Assert.assertTrue("Nao aceitou Download", interceptor.accepts(resourceMethod));
-	}
-
-	@Test
 	public void whenResultIsADownloadShouldUseIt() throws Exception {
 		Download download = mock(Download.class);
 
@@ -105,7 +92,6 @@ public class DownloadInterceptorTest {
 
 	@Test
 	public void whenResultIsAnInputStreamShouldCreateAInputStreamDownload() throws Exception {
-
 		byte[] bytes = "abc".getBytes();
 		when(info.getResult()).thenReturn(new ByteArrayInputStream(bytes));
 
@@ -116,7 +102,6 @@ public class DownloadInterceptorTest {
 	}
 	@Test
 	public void whenResultIsAnInputStreamShouldCreateAByteArrayDownload() throws Exception {
-
 		byte[] bytes = "abc".getBytes();
 		when(info.getResult()).thenReturn(bytes);
 
@@ -128,7 +113,6 @@ public class DownloadInterceptorTest {
 
 	@Test
 	public void whenResultIsAFileShouldCreateAFileDownload() throws Exception {
-
 		File tmp = File.createTempFile("test", "test");
 		new PrintWriter(tmp).append("abc").close();
 
@@ -141,7 +125,6 @@ public class DownloadInterceptorTest {
 	}
 	@Test
 	public void whenResultIsNullAndResultWasUsedShouldDoNothing() throws Exception {
-
 		when(info.getResult()).thenReturn(null);
 		when(result.used()).thenReturn(true);
 
@@ -154,7 +137,6 @@ public class DownloadInterceptorTest {
 	}
 	@Test
 	public void whenResultIsNullAndResultWasNotUsedShouldThrowNPE() throws Exception {
-
 		when(info.getResult()).thenReturn(null);
 		when(result.used()).thenReturn(false);
 
@@ -164,16 +146,76 @@ public class DownloadInterceptorTest {
 		} catch (NullPointerException e) {
 			verifyZeroInteractions(response);
 		}
+	}
+	
+    @Test
+    public void shouldThrowInterceptionExceptionIfIOExceptionOccurs() throws Exception {
+        Download download = mock(Download.class);
+        
+        when(info.getResult()).thenReturn(download);
+        when(result.used()).thenReturn(false);
+        doThrow(new IOException()).when(download).write(any(HttpServletResponse.class));
 
-
+        try {
+            interceptor.intercept(stack, resourceMethod, null);
+            fail("expected InterceptionException");
+        } catch (InterceptionException e) {
+            
+        }
+    }
+    
+    @Test
+    public void shouldNotAcceptStringReturn() throws Exception {
+        Method method = FakeResource.class.getMethod("string");
+        assertThat(interceptor, not(accepts(method)));
+    }
+    
+	@Test
+	public void shouldAcceptFile() throws Exception {
+	    Method method = FakeResource.class.getMethod("file");
+        assertThat(interceptor, accepts(method));
 	}
 
+    @Test
+    public void shouldAcceptInput() throws Exception {
+        Method method = FakeResource.class.getMethod("input");
+        assertThat(interceptor, accepts(method));
+    }
+    
+    @Test
+    public void shouldAcceptDownload() throws Exception {
+        Method method = FakeResource.class.getMethod("download");
+        assertThat(interceptor, accepts(method));
+    }
+    
+    @Test
+    public void shouldAcceptByte() throws Exception {
+        Method method = FakeResource.class.getMethod("asByte");
+        assertThat(interceptor, accepts(method));
+    }
+    
+    private Matcher<Interceptor> accepts(final Method method) {
+    	return new TypeSafeMatcher<Interceptor>() {
+
+			public void describeTo(Description description) {
+				description.appendText("the method ").appendValue(method);
+			}
+
+			protected boolean matchesSafely(Interceptor item) {
+				ResourceMethod m = DefaultResourceMethod.instanceFor(method.getDeclaringClass(), method);
+				return interceptor.accepts(m);
+			}
+
+			protected void describeMismatchSafely(Interceptor item, Description mismatchDescription) {
+			}
+		};
+    }
+    
 	private Matcher<byte[]> arrayStartingWith(final byte[] array) {
 		return new TypeSafeMatcher<byte[]>() {
-			@Override
 			protected void describeMismatchSafely(byte[] item, Description mismatchDescription) {
 			}
-			@Override
+			
 			protected boolean matchesSafely(byte[] item) {
 				if (item.length < array.length) {
 					return false;
@@ -203,6 +245,9 @@ public class DownloadInterceptorTest {
 		}
 		public Download download() {
 			return null;
+		}
+		public byte[] asByte() {
+		    return null;
 		}
 	}
 }

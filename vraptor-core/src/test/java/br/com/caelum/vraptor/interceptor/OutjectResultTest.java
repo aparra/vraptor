@@ -18,6 +18,7 @@
 package br.com.caelum.vraptor.interceptor;
 
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -91,5 +92,11 @@ public class OutjectResultTest {
 		assertFalse(interceptor.accepts(method));
 	}
 
+	@Test
+	public void shouldNotOutjectIfReturnIsVoid() throws NoSuchMethodException {
+		when(method.getMethod()).thenReturn(MyComponent.class.getMethod("returnsAString"));
+
+		assertTrue(interceptor.accepts(method));
+	}
 
 }

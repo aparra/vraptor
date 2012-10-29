@@ -1,13 +1,14 @@
 package br.com.caelum.vraptor.interceptor;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import javax.servlet.http.HttpServletRequest;
 
-import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.Mock;
@@ -36,6 +37,11 @@ public class ExceptionHandlerInterceptorTest {
         MockitoAnnotations.initMocks(this);
         interceptor = new ExceptionHandlerInterceptor(mapper, result, request);
     }
+    
+    @Test
+    public void shouldAlwaysAccept() {
+    	assertTrue(interceptor.accepts(null));
+    }
 
     /**
      * Test when the exception is found.
@@ -62,7 +68,7 @@ public class ExceptionHandlerInterceptorTest {
 
         try {
         	interceptor.intercept(stack, method, instance);
-        	Assert.fail("Should throw InterceptionException");
+        	fail("Should throw InterceptionException");
         } catch (InterceptionException e2) {
         	assertEquals(e2.getCause(), e);
 		}

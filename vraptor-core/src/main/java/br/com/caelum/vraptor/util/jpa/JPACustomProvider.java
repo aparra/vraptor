@@ -40,8 +40,10 @@ import br.com.caelum.vraptor.ioc.spring.SpringProvider;
  * </context-param>
  * </code>
  * @author Lucas Cavalcanti
- *
+ * @deprecated Use web.xml configuration instead. This class will be remove in the future because it's not 
+ * portable accross all IoC containers.
  */
+@Deprecated
 public class JPACustomProvider extends SpringProvider {
 
 	@Override

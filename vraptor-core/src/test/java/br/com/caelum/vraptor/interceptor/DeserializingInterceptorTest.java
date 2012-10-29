@@ -8,6 +8,8 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyZeroInteractions;
 import static org.mockito.Mockito.when;
 
+import java.io.IOException;
+
 import javax.servlet.http.HttpServletRequest;
 
 import org.junit.Before;
@@ -16,6 +18,7 @@ import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 
 import br.com.caelum.vraptor.Consumes;
+import br.com.caelum.vraptor.InterceptionException;
 import br.com.caelum.vraptor.core.DefaultMethodInfo;
 import br.com.caelum.vraptor.core.InterceptorStack;
 import br.com.caelum.vraptor.core.MethodInfo;
@@ -150,5 +153,14 @@ public class DeserializingInterceptorTest {
 		assertEquals(methodInfo.getParameters()[1], "deserialized");
 		verify(stack).next(consumeXml, null);
 	}
-
+	
+	@Test(expected = InterceptionException.class)
+	public void shouldThrowInterceptionExceptionIfAnIOExceptionOccurs() throws Exception {
+		when(request.getInputStream()).thenThrow(new IOException());
+		when(request.getContentType()).thenReturn("application/xml");
+		
+		final Deserializer deserializer = mock(Deserializer.class);
+		when(deserializers.deserializerFor("application/xml", container)).thenReturn(deserializer);
+		interceptor.intercept(stack, consumeXml, null);
+	}
 }
