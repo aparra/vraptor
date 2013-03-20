@@ -108,7 +108,6 @@ import br.com.caelum.vraptor.interceptor.ExecuteMethodInterceptor;
 import br.com.caelum.vraptor.interceptor.FlashInterceptor;
 import br.com.caelum.vraptor.interceptor.ForwardToDefaultViewInterceptor;
 import br.com.caelum.vraptor.interceptor.InstantiateInterceptor;
-import br.com.caelum.vraptor.interceptor.InterceptorListPriorToExecutionExtractor;
 import br.com.caelum.vraptor.interceptor.InterceptorRegistry;
 import br.com.caelum.vraptor.interceptor.OutjectResult;
 import br.com.caelum.vraptor.interceptor.ParametersInstantiatorInterceptor;
@@ -129,7 +128,6 @@ import br.com.caelum.vraptor.ioc.ConverterHandler;
 import br.com.caelum.vraptor.ioc.InterceptorStereotypeHandler;
 import br.com.caelum.vraptor.ioc.ResourceHandler;
 import br.com.caelum.vraptor.ioc.StereotypeHandler;
-import br.com.caelum.vraptor.proxy.CglibProxifier;
 import br.com.caelum.vraptor.proxy.InstanceCreator;
 import br.com.caelum.vraptor.proxy.JavassistProxifier;
 import br.com.caelum.vraptor.proxy.ObjenesisInstanceCreator;
@@ -208,7 +206,6 @@ public class BaseComponents {
     		Converters.class, 				DefaultConverters.class,
             InterceptorRegistry.class, 		TopologicalSortedInterceptorRegistry.class,
             InterceptorHandlerFactory.class,DefaultInterceptorHandlerFactory.class,
-            InterceptorListPriorToExecutionExtractor.class, InterceptorListPriorToExecutionExtractor.class,
             MultipartConfig.class, 			DefaultMultipartConfig.class,
             UrlToResourceTranslator.class, 	DefaultResourceTranslator.class,
             Router.class, 					DefaultRouter.class,
@@ -217,7 +214,7 @@ public class BaseComponents {
             MethodNotAllowedHandler.class,	DefaultMethodNotAllowedHandler.class,
             RoutesConfiguration.class, 		NoRoutesConfiguration.class,
             Deserializers.class,			DefaultDeserializers.class,
-            Proxifier.class, 				getProxifier(),
+            Proxifier.class, 				JavassistProxifier.class,
             InstanceCreator.class,          getInstanceCreator(),
             ParameterNameProvider.class, 	ParanamerNameProvider.class,
             TypeFinder.class, 				DefaultTypeFinder.class,
@@ -344,14 +341,6 @@ public class BaseComponents {
         }
 
         return ReflectionInstanceCreator.class;
-    }
-
-    private static Class<? extends Proxifier> getProxifier() {
-        if (isClassPresent("net.sf.cglib.proxy.Factory")) {
-            return CglibProxifier.class;
-        }
-
-        return JavassistProxifier.class;
     }
 
 	public static Map<Class<?>, Class<?>> getCachedComponents() {

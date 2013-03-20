@@ -20,7 +20,6 @@ import static com.google.common.base.Strings.isNullOrEmpty;
 
 import java.math.BigDecimal;
 import java.text.DecimalFormat;
-import java.text.DecimalFormatSymbols;
 import java.text.MessageFormat;
 import java.text.ParseException;
 import java.util.Locale;
@@ -55,16 +54,15 @@ public class LocaleBasedBigDecimalConverter
         if (isNullOrEmpty(value)) {
             return null;
         }
-
+        
         try {
             final Locale locale = localization.getLocale();
-            DecimalFormat fmt = new DecimalFormat("##0,00", new DecimalFormatSymbols(locale));
+            DecimalFormat fmt = ((DecimalFormat) DecimalFormat.getInstance(locale));
             fmt.setParseBigDecimal(true);
-
+            
             return (BigDecimal) fmt.parse(value);
         } catch (ParseException e) {
             throw new ConversionError(MessageFormat.format(bundle.getString("is_not_a_valid_number"), value));
         }
     }
-
 }
